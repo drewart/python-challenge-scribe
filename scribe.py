@@ -108,9 +108,6 @@ class TerminalScribe:
 
             self.direction_pos_hist.append(pos)
 
-        print('History:')
-        for p in self.direction_pos_hist:
-            print(p)
 
     def set_direction(self, direction):
         self.direction = direction
