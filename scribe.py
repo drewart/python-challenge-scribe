@@ -13,19 +13,19 @@ class Canvas:
         self.can_print = True
 
     def hitsWall(self, point):
-        if point[0] < 0:
+        if round(point[0]) < 0:
             return Wall.LEFT
-        elif point[0] >= self._x:
+        elif round(point[0]) >= self._x:
             return Wall.RIGHT
-        elif point[1] < 0:
+        elif round(point[1]) < 0:
             return Wall.TOP
-        elif point[1] >= self._y:
+        elif round(point[1]) >= self._y:
             return Wall.BOTTOM
         else:
             return None
 
     def setPos(self, pos, mark):
-        self._canvas[pos[0]][pos[1]] = mark
+        self._canvas[round(pos[0])][round(pos[1])] = mark
 
     def getPos(self, pos):
         return self._canvas[pos[0]][pos[1]]
@@ -48,8 +48,7 @@ class TerminalScribe:
         self.framerate = 0.05
         self.pos = [0, 0]
         self.direction = 0
-        self.direction_pos = [0, 0]
-        self.direction_pos_hist = []
+        self.pos_hist = []
 
     def draw(self, pos):
         """
@@ -66,6 +65,7 @@ class TerminalScribe:
         self.pos = pos
         self.canvas.setPos(self.pos, self.mark)
         self.canvas.print()
+        self.pos_hist.append(pos)
         time.sleep(self.framerate)
 
     def up(self):
@@ -88,25 +88,23 @@ class TerminalScribe:
         if not self.canvas.hitsWall(pos):
             self.draw(pos)
 
-    def forward(self):
+    def forward(self, distance=1):
         if not self.direction:
             raise ValueError("direction not set")
-        
-        x = math.sin((self.direction / 180) * math.pi)
 
-        y = math.cos((self.direction / 180) * math.pi)
+        for i in range(distance):
 
-        y = y * -1
+            x = math.sin((self.direction / 180) * math.pi)
+            y = math.cos((self.direction / 180) * math.pi)
 
-        pos = [self.direction_pos[0]+x, self.direction_pos[1]+y]
+            y = y * -1
 
-        int_pos =  [round(pos[0]), round(pos[1])]
+            pos = [self.pos[0]+x, self.pos[1]+y]
 
-        if not self.canvas.hitsWall(int_pos):
-            self.draw(int_pos)
-            self.direction_pos = pos
+            # bounce
+            if not self.canvas.hitsWall(pos):
+                self.draw(pos)
 
-            self.direction_pos_hist.append(pos)
 
 
     def set_direction(self, direction):
@@ -131,22 +129,45 @@ class TerminalScribe:
         for y in range(size-1, -1, -1):
             self.draw((0, y))
 
+def load_scribes():
 
-def main():
-    canvas = Canvas(30, 30)
+    data = [['start',(10,10)],
+            ['direction',130],['forward',10],['direction',170], ['forward',5],
+            ['direction',270], ['forward',10]
+            ]
+
+    canvas = Canvas(40, 40)
     scribe = TerminalScribe(canvas)
 
+    for action in data:
+        #print(action[0], action[1])
+        act = action[0]
+        if act == 'start':
+            scribe.pos = action[1]
+        elif act == 'direction':
+            scribe.set_direction(action[1])
+        elif act == 'forward':
+            for i in range(action[1]):
+                scribe.forward()
+        else:
+            print('unknown command'+action)
 
-    #for i in range(0, 10):
-    #    for j in range(0, 10):
-    #        scribe.draw((i, j))
-    #    time.sleep(0.1)
+def do_square():
+    canvas = Canvas(30, 30)
+    scribe = TerminalScribe(canvas)
+    scribe.draw_square(20)
 
-    #scribe.draw_square(20)
+def do_forward():
+    canvas = Canvas(30, 30)
+    scribe = TerminalScribe(canvas)
     scribe.set_direction(135)
 
     for i in range(20):
         scribe.forward()
+
+
+def main():
+    load_scribes()
 
 if __name__ == '__main__':
     main()
