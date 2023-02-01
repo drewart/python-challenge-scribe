@@ -3,6 +3,8 @@ import os
 import math
 from enum import Enum
 
+from termcolor import colored
+
 Wall = Enum('Wall',['TOP', 'BOTTOM', 'LEFT', 'RIGHT'])    
 
 class Canvas:
@@ -66,7 +68,12 @@ class TerminalScribe:
         self.canvas.setPos(self.pos, self.mark)
         self.canvas.print()
         self.pos_hist.append(pos)
+        
         time.sleep(self.framerate)
+
+    def set_color(self, color_name):
+        self.mark = colored(self.mark, color_name) 
+        self.trail = colored(self.trail, color_name) 
 
     def up(self):
         pos = [self.pos[0], self.pos[1]-1]
@@ -93,8 +100,9 @@ class TerminalScribe:
             raise ValueError("direction not set")
 
         for i in range(distance):
-
+            
             x = math.sin((self.direction / 180) * math.pi)
+
             y = math.cos((self.direction / 180) * math.pi)
 
             y = y * -1
@@ -105,7 +113,9 @@ class TerminalScribe:
             if not self.canvas.hitsWall(pos):
                 self.draw(pos)
 
-
+        #print('History:')
+        #for p in self.direction_pos_hist:
+        #    print(p)
 
     def set_direction(self, direction):
         self.direction = direction
@@ -129,28 +139,55 @@ class TerminalScribe:
         for y in range(size-1, -1, -1):
             self.draw((0, y))
 
-def load_scribes():
+def do_scribes():
 
-    data = [['start',(10,10)],
+    scribes = [{'start':(10,10), 'color': 'blue', 'actions':[
             ['direction',130],['forward',10],['direction',170], ['forward',5],
             ['direction',270], ['forward',10]
-            ]
+            ]},
+            {'start':(0,0), 'color': 'red', 'actions':[
+                    ['direction',130],['forward',10],['direction',170], ['forward',5],
+                    ['direction',270], ['forward',10]
+                    ]},
+            {'start':(20,20), 'color': 'green', 'actions':[
+                    ['direction',130],['forward',10],['direction',170], ['forward',5],
+                    ['direction',270], ['forward',10], ['up', 10], ['right',5]
+                    ]},
+                    ]
+    canvas = Canvas(40, 30)
 
-    canvas = Canvas(40, 40)
-    scribe = TerminalScribe(canvas)
 
-    for action in data:
-        #print(action[0], action[1])
-        act = action[0]
-        if act == 'start':
-            scribe.pos = action[1]
-        elif act == 'direction':
-            scribe.set_direction(action[1])
-        elif act == 'forward':
-            for i in range(action[1]):
-                scribe.forward()
-        else:
-            print('unknown command'+action)
+    for scribe in scribes:
+        scribe['scribe'] = TerminalScribe(canvas)
+        if 'color' in scribe:
+            scribe['scribe'].set_color(scribe['color'])
+        if 'start' in scribe:
+            scribe['scribe'].pos = scribe['start']
+        
+        for actionData in scribe['actions']:
+            action = actionData[0]
+            actionValue = actionData[1]
+            if action == 'direction':
+                scribe['scribe'].set_direction(actionValue)
+            elif action == 'forward':
+                for i in range(actionValue):
+                    scribe['scribe'].forward()
+            elif action == 'up':
+                for i in range(actionValue):
+                    scribe['scribe'].up()
+            elif action == 'down':
+                for i in range(actionValue):
+                    scribe['scribe'].down()
+            elif action == 'left':
+                for i in range(actionValue):
+                    scribe['scribe'].left()
+            elif action == 'right':
+                for i in range(actionValue):
+                    scribe['scribe'].right()
+            else:
+                raise ValueError('unknown action: ' + action[0])
+
+
 
 def do_square():
     canvas = Canvas(30, 30)
@@ -165,9 +202,11 @@ def do_forward():
     for i in range(20):
         scribe.forward()
 
+        
 
 def main():
-    load_scribes()
+
+    do_scribes()
 
 if __name__ == '__main__':
     main()
