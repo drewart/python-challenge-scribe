@@ -141,56 +141,23 @@ class TerminalScribe:
             elif degree_in > 270 and degree_in < 360:
                 degree_out = 270 + (270 - degree_in)
 
-            #if degree_in >= 0 and degree_in <= 45:
-            #    degree_out = 180 - degree_in   # /\
-            #elif degree_in > 45 and degree_in <= 90:
-            #    degree_out = 90 + ( 90 - degree_in )
-            #elif degree_in > 270 and degree_in < 315:
-            #    degree_out = 270 - ( degree_in - 270 )
-            #elif degree_in >= 315 and degree_in < 360:
-            #    degree_out = 180 + (360  - degree_in )
-
         elif wall == Wall.BOTTOM:
+            # in 90 -- 270
             if degree_in > 90 and degree_in < 180:
                 degree_out = degree_in - 90
             elif degree_in >= 180 and degree_in < 270:
                 degree_out = 360 - (degree_in - 180)
 
-            # in 90 -- 270
-            #if degree_in >= 90 and degree_in < 135:
-            #    degree_out =  45 - (135 - degree_in)
-            #elif degree_in >= 135 and degree_in < 180:
-            #    degree_out = 180 - degree_in
-            #elif degree_in >= 180 and degree_in < 225:
-            #    degree_out = 360 - (degree_in - 180)
-            #elif degree_in >= 225 and degree_in < 270:
-            #    degree_out = 270 + ( 270 - degree_in )
         elif wall == Wall.LEFT:
             # in 181 -- 359
             if degree_in >= 180 and degree_in < 360:
                 degree_out = 360 - degree_in
 
-            #if degree_in >= 180 and degree_in < 225:
-            #    degree_out = 180 - ( degree_in - 180 )
-            #elif degree_in >= 225 and degree_in < 270:
-            #    degree_out = 90 + (270 - degree_in)
-            #elif degree_in >= 270 and degree_in < 315:
-            #    degree_out =  45 + ( 315 - degree_in )
-            #elif degree_in >= 315 and degree_in <= 360:
-            #    degree_out =  360 - degree_in
         elif wall == Wall.RIGHT:
             # in 0 - 179
             if degree_in >= 0 and degree_in < 180:
                 degree_out = 360 - degree_in
 
-            #if degree_in >= 0 and degree_in <= 45:
-            #    degree_out = 360 - degree_in
-            #elif degree_in > 45 and degree_in < 90:
-            #    degree_out =  270 + ( 90 - degree_in)
-            #elif degree_in >= 90 and degree_in < 135:
-            #    degree_out = 270 - ( degree_in - 90)
-            #elif degree_in >= 135 and degree_in < 180:
-            #    degree_out = 180 + ( 180 - degree_in )
 
         return degree_out
 
