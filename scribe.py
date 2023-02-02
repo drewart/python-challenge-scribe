@@ -15,6 +15,7 @@ class Canvas:
         self.can_print = True
 
     def hitsWall(self, point):
+        # TODO edge case corner bug 
         if round(point[0]) < 0:
             return Wall.LEFT
         elif round(point[0]) >= self._x:
@@ -51,6 +52,7 @@ class TerminalScribe:
         self.pos = [0, 0]
         self.direction = 0
         self.pos_hist = []
+        self.direction_history = []
 
     def draw(self, pos):
         """
@@ -68,6 +70,8 @@ class TerminalScribe:
         self.canvas.setPos(self.pos, self.mark)
         self.canvas.print()
         self.pos_hist.append(pos)
+
+        print("History:",self.direction_history)
         
         time.sleep(self.framerate)
 
@@ -110,12 +114,54 @@ class TerminalScribe:
             pos = [self.pos[0]+x, self.pos[1]+y]
 
             # bounce
-            if not self.canvas.hitsWall(pos):
+            wall = self.canvas.hitsWall(pos)
+            if not wall:
                 self.draw(pos)
+            elif wall == Wall.TOP:
+                # 270 -- 90 
+                if self.direction >= 0 and self.direction <= 45:
+                    self.direction = 180 - self.direction
+                elif self.direction > 45 and self.direction <= 90:
+                    self.direction = 90 + ( 90 - self.direction )
+                elif self.direction > 270 and self.direction < 315:
+                    self.direction = 270 - ( self.direction - 270 )
+                elif self.direction >= 315 and self.direction < 360:
+                    self.direction = 180 + (360  - self.direction )
 
-        #print('History:')
-        #for p in self.direction_pos_hist:
-        #    print(p)
+            elif wall == Wall.BOTTOM:
+                # 90 -- 270
+                if self.direction >= 90 and self.direction < 135:
+                    self.direction =  45 - (135 - self.direction)
+                elif self.direction >= 135 and self.direction < 180:
+                    self.direction = 180 - self.direction
+                elif self.direction >= 180 and self.direction < 225:
+                    self.direction = 360 - (self.direction - 180)
+                elif self.direction >= 225 and self.direction < 270:
+                    self.direction = 270 + ( 270 - self.direction )
+            elif wall == Wall.LEFT:
+                # in direction 181 -- 359
+                if self.direction >= 180 and self.direction < 225:
+                     self.direction = 180 - ( self.direction - 180 )
+                elif self.direction >= 225 and self.direction < 270:
+                    self.direction = 90 + (270 - self.direction)
+                elif self.direction >= 270 and self.direction < 315:
+                    self.direction =  45 + ( 315 - self.direction )
+                elif self.direction >= 315 and self.direction <= 360:
+                    self.direction =  360 - self.direction
+            elif wall == Wall.RIGHT:
+                # in direction 0 - 179
+                if self.direction >= 0 and self.direction <= 45:
+                    self.direction = 360 - self.direction
+                elif self.direction > 45 and self.direction < 90:
+                    self.direction =  270 + ( 90 - self.direction)
+                elif self.direction >= 90 and self.direction < 135: 
+                    self.direction = 270 - ( self.direction - 90)
+                elif self.direction >= 135 and self.direction < 180:
+                    self.direction = 180 + ( 180 - self.direction )
+            if self.direction not in self.direction_history:
+                self.direction_history.append(self.direction)
+            if self.direction < 0:
+                raise ValueError('no neg direction')
 
     def set_direction(self, direction):
         self.direction = direction
@@ -150,7 +196,7 @@ def do_scribes():
                     ['direction',270], ['forward',10]
                     ]},
             {'start':(20,20), 'color': 'green', 'actions':[
-                    ['direction',130],['forward',10],['direction',170], ['forward',5],
+                    ['direction',135],['forward',15],['direction',270], ['forward',5],
                     ['direction',270], ['forward',10], ['up', 10], ['right',5]
                     ]},
                     ]
@@ -188,7 +234,6 @@ def do_scribes():
                 raise ValueError('unknown action: ' + action[0])
 
 
-
 def do_square():
     canvas = Canvas(30, 30)
     scribe = TerminalScribe(canvas)
@@ -197,16 +242,32 @@ def do_square():
 def do_forward():
     canvas = Canvas(30, 30)
     scribe = TerminalScribe(canvas)
-    scribe.set_direction(135)
+    scribe.set_direction(45)
+    scribe.pos = (10,10)
+    scribe.set_color('red')
+    scribe.forward(90)
 
-    for i in range(20):
-        scribe.forward()
+    scribe2 = TerminalScribe(canvas)
+    scribe2.set_direction(45)
+    scribe2.pos = (20, 29)
+    scribe2.set_color('blue')
+    scribe2.forward(120)
+
+def test_bounce():
+    canvas = Canvas(20, 20)
+    scribe = TerminalScribe(canvas)
+    scribe.set_direction(93)
+    scribe.pos = (0, 0)
+    scribe.set_color('green')
+    scribe.forward(200)
+
 
         
 
 def main():
 
-    do_scribes()
+    #do_forward()
+    test_bounce()
 
 if __name__ == '__main__':
     main()
