@@ -76,8 +76,8 @@ class TerminalScribe:
         time.sleep(self.framerate)
 
     def set_color(self, color_name):
-        self.mark = colored(self.mark, color_name) 
-        self.trail = colored(self.trail, color_name) 
+        self.mark = colored('*', color_name)
+        self.trail = colored('.', color_name)
 
     def up(self):
         pos = [self.pos[0], self.pos[1]-1]
@@ -183,6 +183,22 @@ class TerminalScribe:
         for y in range(size-1, -1, -1):
             self.draw((0, y))
 
+    def plot_x(self, func):
+        for x in range(self.canvas._x):
+            pos = [x, func(x)]
+            if pos[1] and not self.canvas.hitsWall(pos):
+                self.draw(pos)
+
+    def draw_function(self, func):
+        while True:
+            pos = func(self.pos)
+            wall = self.canvas.hitsWall(pos)
+            if not wall:
+                self.draw(pos)
+            else:
+                break
+
+
 def do_scribes():
 
     scribes = [{'start':(10,10), 'color': 'blue', 'actions':[
@@ -259,13 +275,43 @@ def test_bounce():
     scribe.set_color('green')
     scribe.forward(200)
 
+def my_draw_function(pos):
+    return [pos[0]+1,pos[1]+1]
+
+def test_func():
+  canvas = Canvas(30, 30)
+  scribe = TerminalScribe(canvas)
+  scribe.pos = (5, 5)
+  scribe.set_color('green')
+  scribe.draw_function(my_draw_function)
+
+def sine(x):
+    return 5 * math.sin(x/4) + 10
+
+def cosine(x):
+    return 5 * math.cos(x/4) + 10
+
+
+def test_plot():
+  canvas = Canvas(50, 30)
+  scribe = TerminalScribe(canvas)
+  scribe.pos = (0, 0)
+  scribe.set_color('red')
+  scribe.plot_x(sine)
+  scribe.set_color('green')
+  scribe.pos = (0, 0)
+  scribe.plot_x(cosine)
+
+
 
         
 
 def main():
 
     #do_forward()
-    test_bounce()
+    #test_bounce()
+    #test_func()
+    test_plot()
 
 if __name__ == '__main__':
     main()
