@@ -99,69 +99,100 @@ class TerminalScribe:
         if not self.canvas.hitsWall(pos):
             self.draw(pos)
 
-    def forward(self, distance=1):
-        if not self.direction:
-            raise ValueError("direction not set")
-
-        for i in range(distance):
-            
+    def calc_next_pos(self):
             x = math.sin((self.direction / 180) * math.pi)
 
             y = math.cos((self.direction / 180) * math.pi)
 
             y = y * -1
-
             pos = [self.pos[0]+x, self.pos[1]+y]
+            return pos
 
+
+    def forward(self, distance=1):
+        if not self.direction:
+            raise ValueError("direction not set")
+
+        for i in range(distance):
+
+            pos = self.calc_next_pos() 
             # bounce
             wall = self.canvas.hitsWall(pos)
             if not wall:
                 self.draw(pos)
-            elif wall == Wall.TOP:
-                # 270 -- 90 
-                if self.direction >= 0 and self.direction <= 45:
-                    self.direction = 180 - self.direction
-                elif self.direction > 45 and self.direction <= 90:
-                    self.direction = 90 + ( 90 - self.direction )
-                elif self.direction > 270 and self.direction < 315:
-                    self.direction = 270 - ( self.direction - 270 )
-                elif self.direction >= 315 and self.direction < 360:
-                    self.direction = 180 + (360  - self.direction )
-
-            elif wall == Wall.BOTTOM:
-                # 90 -- 270
-                if self.direction >= 90 and self.direction < 135:
-                    self.direction =  45 - (135 - self.direction)
-                elif self.direction >= 135 and self.direction < 180:
-                    self.direction = 180 - self.direction
-                elif self.direction >= 180 and self.direction < 225:
-                    self.direction = 360 - (self.direction - 180)
-                elif self.direction >= 225 and self.direction < 270:
-                    self.direction = 270 + ( 270 - self.direction )
-            elif wall == Wall.LEFT:
-                # in direction 181 -- 359
-                if self.direction >= 180 and self.direction < 225:
-                     self.direction = 180 - ( self.direction - 180 )
-                elif self.direction >= 225 and self.direction < 270:
-                    self.direction = 90 + (270 - self.direction)
-                elif self.direction >= 270 and self.direction < 315:
-                    self.direction =  45 + ( 315 - self.direction )
-                elif self.direction >= 315 and self.direction <= 360:
-                    self.direction =  360 - self.direction
-            elif wall == Wall.RIGHT:
-                # in direction 0 - 179
-                if self.direction >= 0 and self.direction <= 45:
-                    self.direction = 360 - self.direction
-                elif self.direction > 45 and self.direction < 90:
-                    self.direction =  270 + ( 90 - self.direction)
-                elif self.direction >= 90 and self.direction < 135: 
-                    self.direction = 270 - ( self.direction - 90)
-                elif self.direction >= 135 and self.direction < 180:
-                    self.direction = 180 + ( 180 - self.direction )
+            else:
+                # TODO note edge case with corners
+                self.direction = self.get_reflection_degree(wall, self.direction)
+                pos = self.calc_next_pos()
+                self.draw(pos)
+ 
             if self.direction not in self.direction_history:
                 self.direction_history.append(self.direction)
             if self.direction < 0:
                 raise ValueError('no neg direction')
+
+    # reflection of 360 degree based on in box walls
+    def get_reflection_degree(self, wall, degree_in):
+        degree_out = -1
+        if wall == Wall.TOP:
+            # in 270 -- 90
+            if degree_in > 0 and degree_in < 90:
+               degree_out = 180 - degree_in
+            elif degree_in > 270 and degree_in < 360:
+                degree_out = 270 + (270 - degree_in)
+
+            #if degree_in >= 0 and degree_in <= 45:
+            #    degree_out = 180 - degree_in   # /\
+            #elif degree_in > 45 and degree_in <= 90:
+            #    degree_out = 90 + ( 90 - degree_in )
+            #elif degree_in > 270 and degree_in < 315:
+            #    degree_out = 270 - ( degree_in - 270 )
+            #elif degree_in >= 315 and degree_in < 360:
+            #    degree_out = 180 + (360  - degree_in )
+
+        elif wall == Wall.BOTTOM:
+            if degree_in > 90 and degree_in < 180:
+                degree_out = degree_in - 90
+            elif degree_in >= 180 and degree_in < 270:
+                degree_out = 360 - (degree_in - 180)
+
+            # in 90 -- 270
+            #if degree_in >= 90 and degree_in < 135:
+            #    degree_out =  45 - (135 - degree_in)
+            #elif degree_in >= 135 and degree_in < 180:
+            #    degree_out = 180 - degree_in
+            #elif degree_in >= 180 and degree_in < 225:
+            #    degree_out = 360 - (degree_in - 180)
+            #elif degree_in >= 225 and degree_in < 270:
+            #    degree_out = 270 + ( 270 - degree_in )
+        elif wall == Wall.LEFT:
+            # in 181 -- 359
+            if degree_in >= 180 and degree_in < 360:
+                degree_out = 360 - degree_in
+
+            #if degree_in >= 180 and degree_in < 225:
+            #    degree_out = 180 - ( degree_in - 180 )
+            #elif degree_in >= 225 and degree_in < 270:
+            #    degree_out = 90 + (270 - degree_in)
+            #elif degree_in >= 270 and degree_in < 315:
+            #    degree_out =  45 + ( 315 - degree_in )
+            #elif degree_in >= 315 and degree_in <= 360:
+            #    degree_out =  360 - degree_in
+        elif wall == Wall.RIGHT:
+            # in 0 - 179
+            if degree_in >= 0 and degree_in < 180:
+                degree_out = 360 - degree_in
+
+            #if degree_in >= 0 and degree_in <= 45:
+            #    degree_out = 360 - degree_in
+            #elif degree_in > 45 and degree_in < 90:
+            #    degree_out =  270 + ( 90 - degree_in)
+            #elif degree_in >= 90 and degree_in < 135:
+            #    degree_out = 270 - ( degree_in - 90)
+            #elif degree_in >= 135 and degree_in < 180:
+            #    degree_out = 180 + ( 180 - degree_in )
+
+        return degree_out
 
     def set_direction(self, direction):
         self.direction = direction
