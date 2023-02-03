@@ -8,6 +8,16 @@ from termcolor import colored
 
 Wall = Enum('Wall',['TOP', 'BOTTOM', 'LEFT', 'RIGHT'])
 
+
+class TerminalScribeException(Exception):
+
+    def __init__(self, message=''):
+       super().__init__(colored(message, 'red'))
+
+class InvalidParameter(TerminalScribeException):
+    pass
+
+
 class Canvas:
     def __init__(self, width, height):
         self._x = width
@@ -16,7 +26,6 @@ class Canvas:
         self.can_print = True
 
     def hitsWall(self, point):
-        # TODO edge case corner bug
         if round(point[0]) < 0:
             return Wall.LEFT
         elif round(point[0]) >= self._x:
@@ -28,8 +37,26 @@ class Canvas:
         else:
             return None
 
+    def is_out_of_bounds(self, pos):
+        if round(pos[0]) < 0 or round(pos[1]) < 0 or round(pos[0]) >= self._x or round(pos[1]) >= self._y:
+            return True
+        else:
+            return False
+
     def setPos(self, pos, mark):
-        self._canvas[round(pos[0])][round(pos[1])] = mark
+        """
+        >>> c = Canvas(10,10)
+        >>> c.setPos((20,20), '.')
+        Traceback (most recent call last):
+        ...
+        ValueError: pos out of bounds max (10,10)
+        """
+        if self.is_out_of_bounds(pos):
+            raise ValueError("pos out of bounds max ({0},{1})".format(self._x,self._y))
+        try:
+            self._canvas[round(pos[0])][round(pos[1])] = mark
+        except Exception as e:
+            raise TerminalScribeException('Cound not set position to {}} with mark '.format(pos, mark))
 
     def getPos(self, pos):
         return self._canvas[pos[0]][pos[1]]
@@ -68,6 +95,8 @@ class CanvasAxis(Canvas):
 
 class TerminalScribe:
     def __init__(self, canvas):
+        if not issubclass(type(canvas), Canvas):
+            raise InvalidParameter('Must pass canvas object')
         self.canvas = canvas
         self.mark = '*'
         self.trail = '.'
@@ -118,6 +147,9 @@ class TerminalScribe:
     def forward(self, distance=1):
         if not self.direction:
             raise ValueError("direction not set")
+        if self.direction < 0 or self.direction > 360:
+            raise ValueError('direction set out of bounds {} needs to be between 0 to 360'.format(self.direction))
+
 
         for i in range(distance):
 
