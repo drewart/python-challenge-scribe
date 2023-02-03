@@ -3,8 +3,8 @@ import os
 import math
 from enum import Enum
 import random
-
-from termcolor import colored
+from termcolor import colored, COLORS
+from threading import Thread
 
 Wall = Enum('Wall',['TOP', 'BOTTOM', 'LEFT', 'RIGHT'])
 
@@ -17,12 +17,13 @@ class TerminalScribeException(Exception):
 class InvalidParameter(TerminalScribeException):
     pass
 
-
 class Canvas:
-    def __init__(self, width, height):
+    def __init__(self, width, height, scribes=[], framerate=0.5):
         self._x = width
         self._y = height
         self._canvas = [[' ' for y in range(self._y)] for x in range(self._x)]
+        self.scribes = scribes
+        self.framerate = framerate
         self.can_print = True
 
     def hitsWall(self, point):
@@ -64,6 +65,20 @@ class Canvas:
     def clear(self):
         os.system('cls' if os.name == 'nt' else 'clear')
 
+    def go(self):
+        max_moves = max([len(scribe.moves) for scribe in self.scribes])
+        for i in range(max_moves):
+            for scribe in self.scribes:
+                threads = []
+                if len(scribe.moves) > i:
+                    args = scribe.moves[i][1]+[self]
+                    threads.append(Thread(target=scribe.moves[i][0], args=args))
+                [thread.start() for thread in threads]
+                [thread.join() for thread in threads]
+
+            self.print()
+            time.sleep(self.framerate)
+
     def print(self):
         if not self.can_print:
             return
@@ -94,80 +109,99 @@ class CanvasAxis(Canvas):
         #print('  '+' '.join([str(x % 10) for x in range(self._x)]))
 
 class TerminalScribe:
-    def __init__(self, canvas):
-        if not issubclass(type(canvas), Canvas):
-            raise InvalidParameter('Must pass canvas object')
-        self.canvas = canvas
-        self.mark = '*'
-        self.trail = '.'
-        self.framerate = 0.05
-        self.pos = [0, 0]
+    def __init__(self, color='red', mark='*', trail='.', pos=(0,0), framerate=.05):
+        self.moves = []
+        if color not in COLORS:
+            raise InvalidParameter(f'color {color} not a valid color ({", ".join(list(COLORS.keys()))})')
+
+        if len(str(trail)) != 1:
+            raise InvalidParameter('Trail must be a single character')
+        self.trail = str(trail)
+
+        if len(str(mark)) != 1:
+            raise InvalidParameter('Mark must be a single character')
+        self.mark = str(mark)
+
+        self.color=color
+        #self.canvas = canvas
+        self.mark = mark
+        self.trail = trail
+        self.framerate = framerate
+        self.pos = pos
         self.direction = 0
         self.pos_hist = []
         self.direction_history = []
         self.show_direction_history = False
 
-    def draw(self, pos):
+    def draw(self, pos, canvas):
         """
         test draw
         >>> c = Canvas(20,20)
         >>> c.can_print = False
-        >>> ts = TerminalScribe(c)
-        >>> ts.draw((1, 1))
+        >>> ts = TerminalScribe()
+        >>> ts.set_position((0,0))
+        >>> ts.set_direction(135)
+        >>> ts.forward(1)
+        >>> c.scribes.append(ts)
+        >>> c.go()
         >>> c.getPos((0, 0)) + c.getPos((0, 1)) + c.getPos((1, 0)) + c.getPos((1, 1))
         '.  *'
 
         """
-        self.canvas.setPos(self.pos, self.trail)
+        canvas.setPos(self.pos, colored(self.trail, self.color))
         self.pos = pos
-        self.canvas.setPos(self.pos, self.mark)
-        self.canvas.print()
+        canvas.setPos(self.pos, colored(self.mark, self.color))
         self.pos_hist.append(pos)
 
         if self.show_direction_history:
             print("History:",self.direction_history)
 
-        time.sleep(self.framerate)
 
     def set_color(self, color_name):
-        self.mark = colored('*', color_name)
-        self.trail = colored('.', color_name)
+        def _set_color(self, color_name):
+            self.color = color_name
+        self.moves.append((_set_color, [self, color_name]))
 
+    def set_position(self, pos):
+        def _set_position(self, pos, _):
+            self.pos = pos
+        self.moves.append((_set_position, [self, pos]))
 
     def calc_next_pos(self):
-            x = math.sin((self.direction / 180) * math.pi)
+        x = math.sin((self.direction / 180) * math.pi)
 
-            y = math.cos((self.direction / 180) * math.pi)
+        y = math.cos((self.direction / 180) * math.pi)
 
-            y = y * -1
-            pos = [self.pos[0]+x, self.pos[1]+y]
-            return pos
+        y = y * -1
+        pos = [self.pos[0]+x, self.pos[1]+y]
+        return pos
 
 
     def forward(self, distance=1):
-        if not self.direction:
-            raise ValueError("direction not set")
         if self.direction < 0 or self.direction > 360:
             raise ValueError('direction set out of bounds {} needs to be between 0 to 360'.format(self.direction))
 
+        def _forward(self, canvas):
 
-        for i in range(distance):
 
             pos = self.calc_next_pos()
             # bounce check
-            wall = self.canvas.hitsWall(pos)
+            wall = canvas.hitsWall(pos)
             if not wall:
-                self.draw(pos)
+                self.draw(pos, canvas)
             else:
                 # TODO note edge case with corners
                 self.direction = self.get_reflection_degree(wall, self.direction)
                 pos = self.calc_next_pos()
-                self.draw(pos)
+                self.draw(pos, canvas)
 
             if self.direction not in self.direction_history:
                 self.direction_history.append(self.direction)
             if self.direction < 0:
                 raise ValueError('no neg direction: last_direction: ', self.direction_history[-2], ' current:', self.direction)
+
+        for i in range(distance):
+            self.moves.append((_forward,[self]))
 
     # reflection of 360 degree based on in box walls
     def get_reflection_degree(self, wall, degree_in):
@@ -200,110 +234,98 @@ class TerminalScribe:
         return degree_out
 
     def set_direction(self, direction):
-        self.direction = direction
-
+        def _set_direction(self, direction, _):
+            self.direction = direction
+        self.moves.append((_set_direction, [self, direction]))
 
     def draw_function(self, func):
-        while True:
+        def _draw_function(self, func, canvas):
             pos = func(self.pos)
             wall = self.canvas.hitsWall(pos)
             if not wall:
-                self.draw(pos)
-            else:
-                break
+                self.draw(pos, canvas)
+
+        for i in range(100):
+            self.moves.append((_draw_function, [self,function]))
+
 
 class PlotScribe(TerminalScribe):
-    def __init__(self, canvas):
-        super(PlotScribe, self).__init__(canvas)
+
+    def __init__(self, domain, **kwargs):
+        self.x = domain[0]
+        self.domain = domain
+        super().__init__(**kwargs)
 
     def plot_x(self, func):
-        for x in range(self.canvas._x):
-            pos = [x, func(x)]
-            if pos[1] and not self.canvas.hitsWall(pos):
-                self.draw(pos)
 
-    def plot_y(self, func):
-        for y in range(self.canvas._y):
-            pos = [func(y), y]
-            if pos[1] and not self.canvas.hitsWall(pos):
-                self.draw(pos)
+        def _plot_x(self, func, canvas):
+            pos = [self.x, func(self.x)]
+            if pos[1] and not canvas.hitsWall(pos):
+                self.draw(pos, canvas)
+            self.x = self.x + 1
+
+        for x in range(self.domain[0], self.domain[1]):
+            self.moves.append((_plot_x, [self, func]))
+
 
 class FunctionScribe(TerminalScribe):
-    def __init__(self, canvas):
-        super(FunctionScribe, self).__init__(canvas)
 
-    def draw_function(self, func):
-        while True:
+    def draw_function(self, func, move_count=100):
+
+        def _draw_function(self, func, canvas):
             pos = func(self)
-            wall = self.canvas.hitsWall(pos)
+            wall = canvas.hitsWall(pos)
             if not wall:
                 self.draw(pos)
-            else:
-                break
+        for i in range(move_count):
+            self.moves.append((_draw_function, [self, func]))
 
 class RobotScribe(TerminalScribe):
 
-    def up(self):
-        pos = [self.pos[0], self.pos[1]-1]
-        if not self.canvas.hitsWall(pos):
-            self.draw(pos)
+    def up(self, distance=1):
+        self.set_direction(0)
+        self.forward(distance)
 
-    def down(self):
-        pos = [self.pos[0], self.pos[1]+1]
-        if not self.canvas.hitsWall(pos):
-            self.draw(pos)
+    def down(self, distance=1):
+        self.set_direction(180)
+        self.forward(distance)
 
-    def right(self):
-        pos = [self.pos[0]+1, self.pos[1]]
-        if not self.canvas.hitsWall(pos):
-            self.draw(pos)
+    def right(self, distance=1):
+        self.set_direction(90)
+        self.forward(distance)
 
-    def left(self):
-        pos = [self.pos[0]-1, self.pos[1]]
-        if not self.canvas.hitsWall(pos):
-            self.draw(pos)
+    def left(self, distance=1):
+        self.set_direction(270)
+        self.forward(distance)
 
-class ShapeScribe(TerminalScribe):
+class ShapeScribe(RobotScribe):
 
     def draw_square(self, size):
         # top left to top right
-        for x in range(0, size):
-            self.draw((x, 0))
-
-        # top right to bottom right
-        for y in range (1, size):
-            self.draw((size - 1, y))
-
-
-        # bottom right to bottom left
-        for x in range(size-1, -1, -1):
-            self.draw((x, size-1))
-
-        # bottom left to top right
-        for y in range(size-1, -1, -1):
-            self.draw((0, y))
+        self.right(size)
+        self.down(size)
+        self.left(size)
+        self.up(size)
 
 
 class WalkScribe(TerminalScribe):
-    def __init__(self, canvas):
-        super(WalkScribe, self).__init__(canvas)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-    def walk(self):
-        colors = ['red', 'blue', 'white', 'green', 'yellow']
+    def walk(self, distance=1000):
         last_color_index = -1
-        self.direction = random.randrange(360)
+        colors = list(COLORS.keys())
+        direction = random.randrange(360)
+
         i = 0
-        while i < 1000:
-            self.forward()
-            # change direction
-            self.direction += random.randrange(-10,10,1)
+        while i < distance:
+            direction = direction + random.randrange(-10,10,1)
+            if direction <= 0:
+                direction = 360 + self.direction
+            elif direction > 360:
+                direction = self.direction - 360
 
-            if self.direction <= 0:
-                self.direction = 360 + self.direction
-            elif self.direction > 360:
-                self.direction = self.direction - 360
-
-            if i % 100 == 0:
+            if i % 10 == 0:
                 # change color make sure there is a new color
                 while True:
                     color_index = random.randrange(len(colors))
@@ -312,7 +334,9 @@ class WalkScribe(TerminalScribe):
 
                 self.set_color(colors[color_index])
                 last_color_index = color_index
-
+            self.set_direction(direction)
+            self.forward()
+            # change direction
             i += 1
 
 
@@ -446,6 +470,27 @@ def test_walk_scribe():
   scribe.pos = (20,20)
   scribe.walk()
 
+def run_threads():
+    scribe1 = TerminalScribe(color='green')
+    scribe1.set_position((10,10))
+    scribe1.set_direction(135)
+    scribe1.forward(100)
+
+    scribe2 = ShapeScribe(color='yellow')
+    scribe2.set_position((5, 5))
+    scribe2.draw_square(10)
+
+
+    scribe3 = WalkScribe(color='red')
+    scribe3.set_position((15,15))
+    scribe3.walk(100)
+
+    scribe4 = PlotScribe(domain=(0,31), color='blue')
+    scribe4.plot_x(sine)
+
+    canvas = CanvasAxis(31, 31, scribes=[scribe1, scribe2, scribe3, scribe4])
+    canvas.go()
+
 
 def main():
 
@@ -454,7 +499,9 @@ def main():
     #test_func()
     #test_plot()
     #test_func_scribe()
-    test_walk_scribe()
+    #test_walk_scribe()
+    run_threads()
+
 
 if __name__ == '__main__':
     main()
