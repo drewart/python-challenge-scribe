@@ -89,10 +89,13 @@ class Canvas:
 class CanvasAxis(Canvas):
     # Pads 1-digit numbers with an extra space
     def format_axis_number(self, num, y=True):
-        if num % 10 == 9 or ((num+1) % 5 == 0 and num > 10):
+        if not y and (num % 10 == 9 or ((num+1) % 5 == 0 and num > 10)):
             return ''
         if num % 5 != 0:
-            return ' '
+            if not y:
+                return ' '
+            else:
+                return '  '
         if y and num < 10:
             return ' '+str(num)
 
@@ -238,6 +241,9 @@ class TerminalScribe:
             self.direction = direction
         self.moves.append((_set_direction, [self, direction]))
 
+    def get_direction(self):
+        return self.direction
+
     def draw_function(self, func):
         def _draw_function(self, func, canvas):
             pos = func(self.pos)
@@ -276,11 +282,28 @@ class FunctionScribe(TerminalScribe):
             pos = func(self)
             wall = canvas.hitsWall(pos)
             if not wall:
-                self.draw(pos)
+                self.draw(pos, canvas)
+
         for i in range(move_count):
             self.moves.append((_draw_function, [self, func]))
 
 class RobotScribe(TerminalScribe):
+
+    def calc_next_pos(self):
+        x = 0
+        y = 0
+        if self.direction == 180:
+            y += 1
+        elif self.direction == 0 or self.direction == 360:
+            y -= 1
+        elif self.direction == 90:
+            x += 1
+        elif self.direction == 270:
+            x -= 1
+
+        pos = [self.pos[0]+x, self.pos[1]+y]
+        return pos
+
 
     def up(self, distance=1):
         self.set_direction(0)
@@ -308,33 +331,39 @@ class ShapeScribe(RobotScribe):
         self.up(size)
 
 
-class WalkScribe(TerminalScribe):
+class WalkScribe(FunctionScribe):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.step = 0
+        self.color_list = list(COLORS.keys())
+        self.color_index = 0
+        self.last_color_index = -1
+
+    def calc_next_pos(self):
+        dir = self.direction + random.randrange(-10,10,1)
+        if dir <= 0:
+            dir = 360 + dir
+        elif dir > 360:
+            self.direction = self.direction - 360
+        self.step += 1
+
+        if self.step % 10 == 0:
+            # change color make sure there is a new color
+            while True:
+                color_index = random.randrange(len(self.color_list))
+                if self.color_index != self.last_color_index:
+                    break
+
+                self.color = self.color_list[color_index]
+            self.last_color_index = self.color_index
+
+        return super().calc_next_pos()
+
 
     def walk(self, distance=1000):
-        last_color_index = -1
-        colors = list(COLORS.keys())
-        direction = random.randrange(360)
-
+        self.set_direction(random.randrange(360))
         i = 0
         while i < distance:
-            direction = direction + random.randrange(-10,10,1)
-            if direction <= 0:
-                direction = 360 + self.direction
-            elif direction > 360:
-                direction = self.direction - 360
-
-            if i % 10 == 0:
-                # change color make sure there is a new color
-                while True:
-                    color_index = random.randrange(len(colors))
-                    if color_index != last_color_index:
-                        break
-
-                self.set_color(colors[color_index])
-                last_color_index = color_index
-            self.set_direction(direction)
             self.forward()
             # change direction
             i += 1
@@ -482,6 +511,7 @@ def run_threads():
 
 
     scribe3 = WalkScribe(color='red')
+    #scribe3.show_direction_history = True
     scribe3.set_position((15,15))
     scribe3.walk(100)
 
