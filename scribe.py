@@ -1,13 +1,28 @@
 import time
 import os
 import math
+import json
 from enum import Enum
 import random
 from termcolor import colored, COLORS
 from threading import Thread
+import pickle
 
-Wall = Enum('Wall',['TOP', 'BOTTOM', 'LEFT', 'RIGHT'])
+from inspect import getmembers, ismethod
 
+import logging
+
+logging.basicConfig(filename='application.log', level=logging.DEBUG)
+
+Wall = Enum('Wall',['TOP', 'BOTTOM', 'LEFT', 'RIGHT', 'CORNER'])
+
+
+def is_number(val):
+    try:
+        float(val)
+        return True
+    except ValueError:
+        return False
 
 class TerminalScribeException(Exception):
 
@@ -18,15 +33,19 @@ class InvalidParameter(TerminalScribeException):
     pass
 
 class Canvas:
-    def __init__(self, width, height, scribes=[], framerate=0.5):
+    def __init__(self, width, height, scribes=[], framerate=0.05):
         self._x = width
         self._y = height
         self._canvas = [[' ' for y in range(self._y)] for x in range(self._x)]
         self.scribes = scribes
         self.framerate = framerate
         self.can_print = True
+        self.corners = [(0,0),(width-1, 0),(0, height-1),(width-1,height-1)]
+        self.corner_walls = [(Wall.TOP,Wall.LEFT), (Wall.TOP, Wall.RIGHT),(Wall.RIGHT,Wall.BOTTOM),(Wall.LEFT, Wall.BOTTOM)]
 
-    def hitsWall(self, point):
+    def hits_wall(self, point):
+        if (round(point[0]),round(point[1])) in self.corners:
+            return Wall.CORNER
         if round(point[0]) < 0:
             return Wall.LEFT
         elif round(point[0]) >= self._x:
@@ -37,6 +56,16 @@ class Canvas:
             return Wall.BOTTOM
         else:
             return None
+
+    def hits_corner(self, pos):
+        corner = None
+        i = 0
+        for p in self.corners:
+            if (round(pos[0]), round(pos[1])) ==  p:
+                corner = self.corner_walls[i]
+                break
+            i += 1
+        return corner
 
     def is_out_of_bounds(self, pos):
         if round(pos[0]) < 0 or round(pos[1]) < 0 or round(pos[0]) >= self._x or round(pos[1]) >= self._y:
@@ -53,7 +82,7 @@ class Canvas:
         ValueError: pos out of bounds max (10,10)
         """
         if self.is_out_of_bounds(pos):
-            raise ValueError("pos out of bounds max ({0},{1})".format(self._x,self._y))
+            raise ValueError("pos ({0},{1}) out of bounds max ({2},{3})".format(pos[0],pos[1],self._x,self._y))
         try:
             self._canvas[round(pos[0])][round(pos[1])] = mark
         except Exception as e:
@@ -69,12 +98,17 @@ class Canvas:
         max_moves = max([len(scribe.moves) for scribe in self.scribes])
         for i in range(max_moves):
             for scribe in self.scribes:
-                threads = []
-                if len(scribe.moves) > i:
-                    args = scribe.moves[i][1]+[self]
-                    threads.append(Thread(target=scribe.moves[i][0], args=args))
-                [thread.start() for thread in threads]
-                [thread.join() for thread in threads]
+                try:
+                    threads = []
+                    if len(scribe.moves) > i:
+                        args = scribe.moves[i][1]+[self]
+                        threads.append(Thread(target=scribe.moves[i][0], args=args))
+                        logging.info('thread i={} calling scribe {} calling {} arg cnt:{}'.format(i, type(scribe), scribe.moves[i][0].__name__, len(args)))
+                    [thread.start() for thread in threads]
+                    [thread.join() for thread in threads]
+                except Exception as e:
+                    logging.error(e)
+
 
             self.print()
             time.sleep(self.framerate)
@@ -85,6 +119,22 @@ class Canvas:
         self.clear()
         for y in range(self._y):
             print(' '.join([col[y] for col in self._canvas]))
+
+
+    def to_dict(self):
+        return {
+            'classname': type(self).__name__,
+            'x': self._x,
+            'y': self._y,
+            'canvas': self._canvas,
+            'scribes': [scribe.to_dict() for scribe in self.scribes]
+        }
+
+    def from_dict(data):
+        canvas = globals()[data.get('classname')](data.get('x'), data.get('y'), scribes=[globals()[scribe.get('classname')].from_dict(scribe) for scribe in data.get('scribes')])
+        canvas._canvas = data.get('canvas')
+        return canvas
+
 
 class CanvasAxis(Canvas):
     # Pads 1-digit numbers with an extra space
@@ -105,7 +155,7 @@ class CanvasAxis(Canvas):
     def print(self):
         self.clear()
         for y in range(self._y):
-            print(self.format_axis_number(y) + ' '.join([col[y] for col in self._canvas]))
+            print('|',self.format_axis_number(y) + ' '.join([col[y] for col in self._canvas]),'|')
 
         print('  '+' '.join([self.format_axis_number(x, False) for x in range(self._x)]))
         # debug fix
@@ -132,6 +182,7 @@ class TerminalScribe:
         self.framerate = framerate
         self.pos = pos
         self.direction = 0
+        self.last_direction = 0
         self.pos_hist = []
         self.direction_history = []
         self.show_direction_history = False
@@ -159,16 +210,17 @@ class TerminalScribe:
         if self.show_direction_history:
             print("History:",self.direction_history)
 
+    def _set_color(self, color_name):
+        self.color = color_name
 
     def set_color(self, color_name):
-        def _set_color(self, color_name):
-            self.color = color_name
-        self.moves.append((_set_color, [self, color_name]))
+        self.moves.append((self._set_color, [color_name]))
+
+    def _set_position(self, pos, _):
+        self.pos = pos
 
     def set_position(self, pos):
-        def _set_position(self, pos, _):
-            self.pos = pos
-        self.moves.append((_set_position, [self, pos]))
+        self.moves.append((self._set_position, [pos]))
 
     def calc_next_pos(self):
         x = math.sin((self.direction / 180) * math.pi)
@@ -180,31 +232,52 @@ class TerminalScribe:
         return pos
 
 
+    def _forward(self, canvas):
+
+        pos = self.calc_next_pos()
+        # bounce check
+        wall = canvas.hits_wall(pos)
+        if not wall:
+            self.draw(pos, canvas)
+        elif wall == Wall.CORNER:
+            logging.debug('hit corner {} direction: {}', pos, self.direction)
+            corner_walls = canvas.hits_corner(pos)
+            self.direction = self.get_relection_corner(canvas.corner_walls, corner_walls, self.direction)
+            pos = self.calc_next_pos()
+            self.draw(pos, canvas)
+        else:
+            self.direction = self.get_reflection_degree(wall, self.direction)
+            pos = self.calc_next_pos()
+            self.draw(pos, canvas)
+
+        logging.debug('_forward: scribe: {} direction: {} pos:({},{})'.format(self, str(self.direction), pos[0],pos[1]))
+        #if self.direction not in self.direction_history:
+        #    logging.debug()
+        #    self.direction_history.append(self.direction)
+        if self.direction < 0:
+            raise ValueError('no neg direction: last_direction: ', self.direction_history[-2], ' current:', self.direction)
+
     def forward(self, distance=1):
         if self.direction < 0 or self.direction > 360:
             raise ValueError('direction set out of bounds {} needs to be between 0 to 360'.format(self.direction))
 
-        def _forward(self, canvas):
-
-
-            pos = self.calc_next_pos()
-            # bounce check
-            wall = canvas.hitsWall(pos)
-            if not wall:
-                self.draw(pos, canvas)
-            else:
-                # TODO note edge case with corners
-                self.direction = self.get_reflection_degree(wall, self.direction)
-                pos = self.calc_next_pos()
-                self.draw(pos, canvas)
-
-            if self.direction not in self.direction_history:
-                self.direction_history.append(self.direction)
-            if self.direction < 0:
-                raise ValueError('no neg direction: last_direction: ', self.direction_history[-2], ' current:', self.direction)
-
         for i in range(distance):
-            self.moves.append((_forward,[self]))
+            self.moves.append((self._forward,[]))
+
+    def get_relection_corner(self, corners, corner, degree_in):
+        corner_relect_degree_range = [(90, 180),(180, 270), (270, 360), (0, 90)]
+        corner_degree_range = (0, 360)
+        i = 0
+        for c in corners:
+            if corner == c:
+                corner_degree_range = corner_relect_degree_range[i]
+                break
+            i += 1
+        return random.randrange(corner_degree_range[0],corner_degree_range[1])
+
+
+
+
 
     # reflection of 360 degree based on in box walls
     def get_reflection_degree(self, wall, degree_in):
@@ -232,28 +305,53 @@ class TerminalScribe:
             # in 0 - 179
             if degree_in >= 0 and degree_in <= 180:
                 degree_out = 360 - degree_in
-
-
         return degree_out
 
+    def _set_direction(self, direction, _):
+        self.last_direction = self.direction
+        self.direction = direction
+
+
     def set_direction(self, direction):
-        def _set_direction(self, direction, _):
-            self.direction = direction
-        self.moves.append((_set_direction, [self, direction]))
+        self.moves.append((self._set_direction, [direction]))
 
     def get_direction(self):
         return self.direction
 
+
+    def _draw_function(self, func, canvas):
+        pos = func(self.pos)
+        wall = canvas.hits_wall(pos)
+        if not wall:
+            self.draw(pos, canvas)
+
     def draw_function(self, func):
-        def _draw_function(self, func, canvas):
-            pos = func(self.pos)
-            wall = self.canvas.hitsWall(pos)
-            if not wall:
-                self.draw(pos, canvas)
-
         for i in range(100):
-            self.moves.append((_draw_function, [self,function]))
+            self.moves.append((self._draw_function, [function]))
 
+    def to_dict(self):
+        return {
+            'classname': type(self).__name__,
+            'color': self.color,
+            'mark': self.mark,
+            'trail': self.trail,
+            'pos': self.pos,
+            'moves': [[move[0].__name__, move[1]] for move in self.moves]
+        }
+
+    def from_dict(data):
+        scribe = globals()[data.get('classname')](
+            color=data.get('color'),
+            mark=data.get('mark'),
+            trail=data.get('trail'),
+            pos=data.get('pos'),
+            )
+        scribe.moves = scribe._moves_from_dict(data.get('moves'))
+        return scribe
+
+    def _moves_from_dict(self, movesData):
+        bound_methods = {key: val for key, val in getmembers(self, predicate=ismethod)}
+        return [[bound_methods[name], args] for name, args in movesData]
 
 class PlotScribe(TerminalScribe):
 
@@ -262,17 +360,15 @@ class PlotScribe(TerminalScribe):
         self.domain = domain
         super().__init__(**kwargs)
 
+    def _plot_x(self, func, canvas):
+        pos = [self.x, func(self.x)]
+        if pos[1] and not canvas.hits_wall(pos):
+            self.draw(pos, canvas)
+        self.x = self.x + 1
+
     def plot_x(self, func):
-
-        def _plot_x(self, func, canvas):
-            pos = [self.x, func(self.x)]
-            if pos[1] and not canvas.hitsWall(pos):
-                self.draw(pos, canvas)
-            self.x = self.x + 1
-
         for x in range(self.domain[0], self.domain[1]):
-            self.moves.append((_plot_x, [self, func]))
-
+            self.moves.append((self._plot_x, [func]))
 
 class FunctionScribe(TerminalScribe):
 
@@ -280,12 +376,12 @@ class FunctionScribe(TerminalScribe):
 
         def _draw_function(self, func, canvas):
             pos = func(self)
-            wall = canvas.hitsWall(pos)
+            wall = canvas.hits_wall(pos)
             if not wall:
                 self.draw(pos, canvas)
 
         for i in range(move_count):
-            self.moves.append((_draw_function, [self, func]))
+            self.moves.append((_draw_function, [func]))
 
 class RobotScribe(TerminalScribe):
 
@@ -331,30 +427,33 @@ class ShapeScribe(RobotScribe):
         self.up(size)
 
 
-class WalkScribe(FunctionScribe):
-    def __init__(self, **kwargs):
+class WalkScribe(TerminalScribe):
+    def __init__(self, range=10 , **kwargs):
         super().__init__(**kwargs)
         self.step = 0
         self.color_list = list(COLORS.keys())
         self.color_index = 0
         self.last_color_index = -1
+        self.range = range
 
     def calc_next_pos(self):
-        dir = self.direction + random.randrange(-10,10,1)
-        if dir <= 0:
+        dir = self.get_direction() + random.randrange(self.range * -1, self.range, 1)
+        if dir < 0:
             dir = 360 + dir
         elif dir > 360:
-            self.direction = self.direction - 360
+            dir = dir - 360
         self.step += 1
+
+        self.direction = dir
 
         if self.step % 10 == 0:
             # change color make sure there is a new color
-            while True:
-                color_index = random.randrange(len(self.color_list))
-                if self.color_index != self.last_color_index:
-                    break
+            color_index = random.randrange(len(self.color_list))
+            if color_index == self.last_color_index:
+                color_index = (color_index + 1) % len(self.color_list)
 
-                self.color = self.color_list[color_index]
+            self.color = self.color_list[color_index]
+
             self.last_color_index = self.color_index
 
         return super().calc_next_pos()
@@ -511,7 +610,7 @@ def run_threads():
 
 
     scribe3 = WalkScribe(color='red')
-    #scribe3.show_direction_history = True
+    scribe3.show_direction_history = True
     scribe3.set_position((15,15))
     scribe3.walk(100)
 
@@ -519,8 +618,15 @@ def run_threads():
     scribe4.plot_x(sine)
 
     canvas = CanvasAxis(31, 31, scribes=[scribe1, scribe2, scribe3, scribe4])
+    #canvas = CanvasAxis(31, 31, scribes=[scribe1, scribe3])
+    #canvas = CanvasAxis(31, 31, scribes=[scribe1, scribe2, scribe4])
+    #canvas = CanvasAxis(31, 31, scribes=[scribe1, scribe2, scribe4])
+    #canvas = CanvasAxis(31, 31, scribes=[scribe2, scribe3, scribe4])
+    #canvas = CanvasAxis(31, 31, scribes=[scribe3])
     canvas.go()
-
+    #data = canvas.to_dict()
+    #with open('scribes.data','wb') as f:
+    #    pickle.dump(data, f)
 
 def main():
 
