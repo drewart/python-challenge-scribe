@@ -120,6 +120,17 @@ class Canvas:
         for y in range(self._y):
             print(' '.join([col[y] for col in self._canvas]))
 
+    def to_json_file(self, file_name):
+       with open(file_name,  'w') as f:
+           f.write(json.dumps(self.to_dict()))
+
+    def from_json_file(file_name):
+        with open(file_name, 'r') as f:
+            try:
+                return Canvas.from_dict(json.loads(f.readline()))
+            except Exception as e:
+                print(e)
+                raise TerminalScribeException("File {} is not a valid Scribe file".format(file_name))
 
     def to_dict(self):
         return {
@@ -624,9 +635,22 @@ def run_threads():
     #canvas = CanvasAxis(31, 31, scribes=[scribe2, scribe3, scribe4])
     #canvas = CanvasAxis(31, 31, scribes=[scribe3])
     canvas.go()
-    #data = canvas.to_dict()
-    #with open('scribes.data','wb') as f:
-    #    pickle.dump(data, f)
+
+def save_load_run_scribes_from_file():
+
+    scribe = TerminalScribe(color='green')
+    scribe.set_direction(135)
+    scribe.forward(10)
+    shapeScribe = ShapeScribe(color='yellow')
+    shapeScribe.draw_square(20)
+
+    c = CanvasAxis(31,31, scribes=[scribe, shapeScribe])
+
+    c.to_json_file('scribes.json')
+
+    canvasFromFile = Canvas.from_json_file('scribes.json')
+    canvasFromFile.go()
+
 
 def main():
 
@@ -636,7 +660,8 @@ def main():
     #test_plot()
     #test_func_scribe()
     #test_walk_scribe()
-    run_threads()
+    #run_threads()
+    save_load_run_scribes_from_file()
 
 
 if __name__ == '__main__':
